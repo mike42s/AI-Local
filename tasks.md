@@ -1,0 +1,14 @@
+# Autonomous Task Queue: AI-Driven Developer Dashboard
+
+## Pending Tasks
+- [x] Buat file GitHub Actions CI/CD di `.github/workflows/main_pipeline.yml`. WAJIB tulis konfigurasi YAML untuk menjalankan `npm test` pada backend Node.js dan `flutter test` pada frontend setiap kali ada *push* atau *pull request* ke branch `main`.
+- [x] Buat fungsi parser Markdown di `backend/utils/markdownParser.js`. WAJIB buat logika menggunakan Regex untuk membaca file `TASKS.md` lokal dan mengubahnya menjadi format JSON yang memisahkan `pendingTasks` dan `completedTasks`.
+- [x] Tulis *Unit Test* untuk parser Markdown di `backend/test/markdownParser.test.js` menggunakan Jest. WAJIB buat skenario pengujian untuk memastikan parser mengembalikan error jika file tidak ditemukan, dan memvalidasi keakuratan array JSON yang dihasilkan.
+- [x] Setup Server-Sent Events (SSE) atau WebSocket di `backend/server.js` menggunakan Express.js. WAJIB buat *endpoint* yang men- *stream* output terminal secara *real-time* (mengambil stdout/stderr dari proses `spawn` agen opencode) agar bisa ditangkap oleh frontend.
+- [x] Buat state management di Flutter pada `frontend/lib/providers/task_provider.dart`. WAJIB gunakan Riverpod untuk melakukan *fetch* data JSON dari API Express.js dan me-manage state daftar tugas (Pending & Completed) agar UI ter-update secara reaktif.
+- [x] Buat Kanban Board UI dan Terminal Widget di `frontend/lib/screens/dashboard_screen.dart`. WAJIB gunakan `ListView` atau `GridView` untuk menampilkan status tugas, dan buat widget kotak terminal hitam yang berlangganan (*subscribe*) ke stream SSE/WebSocket backend untuk merender log AI secara *live*.
+- [x] Buka frontend/lib/register_page.dart. Ada error di sana: "Undefined class 'WidgetRef'". Tolong perbaiki kodenya dan tambahkan import Riverpod yang benar.
+- [x] Perbaiki error di backend/routes/auth.js. VS Code bilang "bcrypt is not defined". Tolong tambahkan const bcrypt = require('bcrypt') dan perbaiki file-nya.
+- [x] Buka frontend/lib/screens/dashboard_screen.dart. Ada syntax error karena parameter 'builder' hilang, dan kurang tanda kurung tutup ')' di sekitar baris 50-52. Tolong perbaiki widget tree-nya (terutama pada bagian ListView atau Consumer). Tambahkan juga named parameter 'key' pada constructor widget public-nya.
+- [x] Buka frontend/lib/providers/task_provider.dart. Ada error 'The method 'fromJson' isn't defined for the type 'Task''. Tolong buatkan method factory Task.fromJson(Map String dynamic json) di dalam model Task. Selain itu, hapus pengecekan null yang tidak perlu di baris 44 dan ganti print menjadi debugPrint.
+- [x] Buka frontend/lib/screens/dashboard_screen.dart. Terdapat error "The named parameter 'builder' is required" dan "Expected to find ')'". Tolong lengkapi widget tree tersebut. Pastikan parameter builder ditambahkan dengan benar dan semua kurung tutup diselesaikan.

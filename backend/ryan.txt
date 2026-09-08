@@ -1,0 +1,5 @@
+PT Satoria Group sedang membuka lowongan untuk posisi IT Developer SPV.
+Kualifikasi yang dibutuhkan antara lain pendidikan minimal S1 IT dan pengalaman minimal 3 tahun di posisi yang sama.
+Kandidat harus menguasai Python, PHP Laravel, Javascript, dan Open Web UI.
+Selain itu, diwajibkan memiliki pengalaman membangun local LLM, familiar dengan RAG, Ollama, LangChain, dan PostgreSQL.
+Penempatan untuk posisi ini berada di Surabaya.

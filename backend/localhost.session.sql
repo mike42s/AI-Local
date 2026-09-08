@@ -1,0 +1,1 @@
+DELETE FROM txt_embeddings  
