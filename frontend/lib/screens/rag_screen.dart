@@ -81,23 +81,18 @@ class _RagScreenState extends ConsumerState<RagScreen> {
       _attachedPdfName = null;
     });
 
-    // Step 1: Auto-ingest attached PDF into pgvector if present
-    if (hasPdf && pdfBytes != null) {
-      final pdfTitle = pdfName ?? 'Attached_CV_${DateTime.now().millisecondsSinceEpoch}';
-      await ref.read(ragProvider.notifier).ingestPdfDocument(
-            pdfBytes: pdfBytes,
-            title: pdfTitle,
-          );
-    }
-
-    // Step 2: Formulate prompt
+    // Formulate prompt
     String promptToSend = userText;
     if (promptToSend.isEmpty && hasPdf) {
       promptToSend =
           'Evaluasi kualifikasi CV pelamar "${pdfName ?? 'Kandidat'}" ini secara komprehensif, sebutkan kelebihan, kekurangan, dan berikan skor kecocokan Match Score 1-100.';
     }
 
-    ref.read(ragProvider.notifier).sendMessageStream(promptToSend);
+    // Send candidate PDF directly on-the-fly to stream endpoint without polluting pgvector DB
+    ref.read(ragProvider.notifier).sendMessageStream(
+          promptToSend,
+          candidatePdfBytes: pdfBytes,
+        );
     _scrollToBottom();
   }
 

@@ -60,9 +60,11 @@ router.post("/ingest", async (req, res) => {
     const vectorStore = await PGVectorStore.initialize(getEmbeddings(), dbConfig);
     await vectorStore.addDocuments(splitDocs);
 
+    console.log(`[RAG INGEST SUCCESS] Ingested '${docTitle}' into pgvector (${splitDocs.length} chunks)`);
+
     return res.json({
       success: true,
-      message: `Dokumen '${docTitle}' berhasil disimpan ke PostgreSQL pgvector!`,
+      message: `Dokumen SOP/Rules '${docTitle}' berhasil disimpan ke PostgreSQL pgvector!`,
       chunksCount: splitDocs.length,
     });
   } catch (error) {
@@ -94,7 +96,7 @@ router.post("/ingest-pdf", async (req, res) => {
       return res.status(400).json({ error: "Tidak dapat mengekstrak teks dari file PDF." });
     }
 
-    const docTitle = title || `CV_PDF_${Date.now()}`;
+    const docTitle = title || `Rules_PDF_${Date.now()}`;
     const doc = new Document({
       pageContent: extractedText,
       metadata: { title: docTitle, source: "PDF_Upload", createdAt: new Date().toISOString() },
@@ -110,9 +112,11 @@ router.post("/ingest-pdf", async (req, res) => {
     const vectorStore = await PGVectorStore.initialize(getEmbeddings(), dbConfig);
     await vectorStore.addDocuments(splitDocs);
 
+    console.log(`[RAG INGEST PDF SUCCESS] Ingested '${docTitle}' into pgvector (${splitDocs.length} chunks)`);
+
     return res.json({
       success: true,
-      message: `File PDF CV '${docTitle}' (${extractedText.length} karakter) berhasil diekstrak dan disimpan ke PostgreSQL pgvector!`,
+      message: `Dokumen SOP/Rules PDF '${docTitle}' (${extractedText.length} karakter) berhasil diekstrak dan disimpan ke PostgreSQL pgvector!`,
       chunksCount: splitDocs.length,
       charsExtracted: extractedText.length,
     });
@@ -128,13 +132,13 @@ router.post("/ingest-pdf", async (req, res) => {
 /**
  * POST /api/rag/stream
  * Perform RAG similarity search & stream response with 1-100 Grading and Bilingual (EN/ID) support.
- * Body: { prompt?: string, question?: string }
+ * Accepts candidate CV attached on-the-fly via candidatePdfBase64 without polluting the pgvector rules database.
+ * Body: { prompt?: string, question?: string, candidatePdfBase64?: string, candidateText?: string }
  */
 router.post("/stream", async (req, res) => {
-  const query = req.body.prompt || req.body.question;
-  if (!query || typeof query !== "string" || query.trim() === "") {
-    return res.status(400).json({ error: "Prompt/question parameter is required." });
-  }
+  const query = req.body.prompt || req.body.question || "Evaluasi kualifikasi CV pelamar ini";
+  const candidatePdfBase64 = req.body.candidatePdfBase64;
+  let candidateCvText = req.body.candidateText || "";
 
   // Set SSE Headers
   res.setHeader("Content-Type", "text/event-stream");
@@ -143,17 +147,39 @@ router.post("/stream", async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
 
   try {
+    console.log("==================================================");
+    console.log(`[RAG DEBUG] Incoming Query: "${query}"`);
+
+    // Parse Candidate PDF CV on-the-fly if attached
+    if (candidatePdfBase64 && typeof candidatePdfBase64 === "string") {
+      try {
+        const pdfBuf = Buffer.from(candidatePdfBase64, "base64");
+        const parsed = await pdfParse(pdfBuf);
+        candidateCvText = parsed.text ? parsed.text.trim() : "";
+        console.log(`[RAG DEBUG] On-The-Fly Candidate CV Extracted (${candidateCvText.length} chars)`);
+      } catch (pdfErr) {
+        console.error("[RAG DEBUG] Failed to parse candidate PDF on-the-fly:", pdfErr.message);
+      }
+    }
+
+    if (!candidateCvText) {
+      candidateCvText = "Tidak ada dokumen CV pelamar yang diunggah secara khusus pada request ini. Evaluasi dilakukan berdasarkan konteks kualifikasi umum.";
+    }
+
+    // Retrieve Company Rules / Job Position requirements from pgvector DB
     const dbConfig = getDbConfig();
     const vectorStore = await PGVectorStore.initialize(getEmbeddings(), dbConfig);
 
-    // Retrieve top 2 matching context chunks
     const searchResults = await vectorStore.similaritySearch(query, 2);
 
-    let context = "";
+    let companyRulesContext = "";
     if (searchResults && searchResults.length > 0) {
-      context = searchResults.map((doc) => doc.pageContent).join("\n---\n");
+      companyRulesContext = searchResults.map((doc) => doc.pageContent).join("\n---\n");
+      console.log(`[RAG DEBUG] Company Rules Retrieved from pgvector (${searchResults.length} chunks):`);
+      console.log(companyRulesContext.substring(0, 300) + "...");
     } else {
-      context = "Tidak ditemukan dokumen/konteks spesifik di database pgvector.";
+      companyRulesContext = "Tidak ditemukan dokumen aturan/syarat posisi spesifik di database pgvector.";
+      console.log("[RAG DEBUG] No specific Company Rules found in pgvector.");
     }
 
     const hrPromptTemplate = PromptTemplate.fromTemplate(`
@@ -161,25 +187,31 @@ Anda adalah Sistem AI HRD Screening & Evaluasi Pelamar Kerja yang sangat profesi
 Sistem ini mendukung analisis CV dan dokumen kualifikasi baik dalam Bahasa Indonesia maupun Bahasa Inggris (Bilingual).
 
 Instruksi Evaluasi:
-1. **MATCH SCORE (1-100)**: Berikan SKOR KECOCOKAN PELAMAR dari skala 1 sampai 100 berdasarkan kesesuaian antara kualifikasi pelamar pada konteks dengan kualifikasi yang dicari/ditanyakan.
+1. **MATCH SCORE (1-100)**: Berikan SKOR KECOCOKAN PELAMAR dari skala 1 sampai 100 berdasarkan kesesuaian antara Dokumen CV Pelamar dengan Syarat/Aturan Perusahaan.
    WAJIB sertakan header unik persis dalam format: \`[MATCH SCORE: XX/100]\` (contoh: \`[MATCH SCORE: 85/100]\`).
 2. **Kelebihan Utama (Key Strengths)**: Tuliskan poin-poin keunggulan kandidat.
 3. **Kekurangan / Gap (Missing Requirements)**: Tuliskan kualifikasi yang belum terpenuhi atau perlu diklarifikasi.
 4. **Rekomendasi Akhir HRD**: Berikan kesimpulan (Sangat Layak / Dipertimbangkan / Tidak Layak).
 
-Gunakan Konteks Dokumen dari Database berikut sebagai acuan utama:
+Syarat / Aturan Perusahaan (Dari Database Vector pgvector):
 ---
-{context}
+{companyRulesContext}
 ---
 
-Pertanyaan / Kriteria Evaluasi HRD:
+Dokumen CV Pelamar (Diunggah pada Request Ini):
+---
+{candidateCvText}
+---
+
+Pertanyaan / Instruksi Evaluasi HRD:
 {question}
 
 Jawaban Evaluasi HRD & Skor Match:
     `);
 
     const formattedPrompt = await hrPromptTemplate.format({
-      context: context,
+      companyRulesContext: companyRulesContext,
+      candidateCvText: candidateCvText,
       question: query,
     });
 
@@ -199,6 +231,9 @@ Jawaban Evaluasi HRD & Skor Match:
         })}\n\n`
       );
     }
+
+    console.log("[RAG DEBUG] Streaming response finished successfully.");
+    console.log("==================================================");
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();

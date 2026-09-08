@@ -59,7 +59,10 @@ class RagNotifier extends Notifier<RagState> {
     }
   }
 
-  Future<void> sendMessageStream(String prompt) async {
+  Future<void> sendMessageStream(
+    String prompt, {
+    List<int>? candidatePdfBytes,
+  }) async {
     final trimmedPrompt = prompt.trim();
     if (trimmedPrompt.isEmpty || state.isStreaming) return;
 
@@ -92,7 +95,16 @@ class RagNotifier extends Notifier<RagState> {
       final request = http.Request('POST', url);
       request.headers['Content-Type'] = 'application/json';
       request.headers['Accept'] = 'text/event-stream';
-      request.body = jsonEncode({'prompt': trimmedPrompt});
+
+      final Map<String, dynamic> bodyPayload = {
+        'prompt': trimmedPrompt,
+      };
+
+      if (candidatePdfBytes != null && candidatePdfBytes.isNotEmpty) {
+        bodyPayload['candidatePdfBase64'] = base64Encode(candidatePdfBytes);
+      }
+
+      request.body = jsonEncode(bodyPayload);
 
       final response = await client.send(request);
 
@@ -196,7 +208,7 @@ class RagNotifier extends Notifier<RagState> {
       if (response.statusCode == 200 && data['success'] == true) {
         state = state.copyWith(
           isIngesting: false,
-          ingestMessage: data['message'] ?? 'Dokumen berhasil di-ingest!',
+          ingestMessage: data['message'] ?? 'Dokumen SOP/Rules berhasil di-ingest!',
         );
         return true;
       } else {
@@ -243,7 +255,7 @@ class RagNotifier extends Notifier<RagState> {
       if (response.statusCode == 200 && data['success'] == true) {
         state = state.copyWith(
           isIngesting: false,
-          ingestMessage: data['message'] ?? 'File PDF CV berhasil di-ingest ke pgvector!',
+          ingestMessage: data['message'] ?? 'File PDF SOP/Rules berhasil di-ingest ke pgvector!',
         );
         return true;
       } else {

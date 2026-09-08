@@ -10,7 +10,7 @@ A 100% **On-Premise, Zero-Cloud-Dependency** Enterprise AI Platform built with N
 
 ---
 
-## 🎯 System Architecture
+## 🎯 System Architecture & Isolation Model
 
 ```text
  ┌────────────────────────────────────────────────────────┐
@@ -23,12 +23,15 @@ A 100% **On-Premise, Zero-Cloud-Dependency** Enterprise AI Platform built with N
  │  • /api/chat/stream  • /api/rag/stream & /api/rag/ingest │
  └─────────────┬──────────────────────────────┬───────────┘
                │                              │
-  Embeddings   │ Similarity Search            │ Prompt + Context Stream
+  Company      │ Similarity Search            │ Prompt + Context Stream
+  Rules Vector │                              │ (Rules DB + Candidate CV)
  ┌─────────────▼──────────────┐  ┌────────────▼──────────────┐
  │ PostgreSQL pgvector (5433) │  │   Ollama Engine (11434)  │
- │   Tabel: txt_embeddings    │  │ qwen2.5-coder & nomic-embed│
+ │  Tabel Rules: txt_embeddings│  │ qwen2.5-coder & nomic-embed│
  └────────────────────────────┘  └──────────────────────────┘
 ```
+
+> 🔒 **Isolated Candidate Evaluation Model**: Data CV pelamar yang diunggah saat chat dievaluasi secara **on-the-fly di memori** dan **TIDAK disimpan ke database pgvector**. Database pgvector murni digunakan untuk menyimpan **Rules/SOP/Syarat Perusahaan**, sehingga data antar pelamar tidak saling tercampur atau mengotori database!
 
 ---
 
@@ -39,24 +42,43 @@ A 100% **On-Premise, Zero-Cloud-Dependency** Enterprise AI Platform built with N
 - Responsive typing effect in Flutter with zero UI freezing (*non-blocking stream*).
 
 ### 2. 📑 Menu 2: HR Candidate Screening & RAG Filter
-- **Zero-Hallucination RAG**: Answers queries strictly based on candidate CVs and company SOP documents stored in pgvector.
+- **Zero-Hallucination RAG**: Answers queries strictly based on company SOP/rules documents stored in pgvector.
+- **Direct PDF CV Attachment**: Attach candidate CVs directly in the chat bar (`📎`).
 - **Automated 1-100 Match Score Grading**: Calculates a `[MATCH SCORE: XX/100]` matching score badge for candidate qualification.
 - **Bilingual CV Support**: Seamlessly analyzes resumes written in **Indonesian** or **English**.
-- **In-App Document Ingestion**: Ingest new candidate CVs or SOP text files directly via Flutter modal UI or API.
+
+---
+
+## 🔍 How to Debug & Verify the AI (Panduan Memastikan AI Bekerja dengan Benar)
+
+### 1. Pengujian RAG & Zero-Hallucination
+1. **Langkah 1**: Masukkan aturan/syarat jabatan perusahaan ke database via modal `+ Ingest CV / Dokumen` (atau jalankan `node ingest.js`).
+2. **Langkah 2**: Tanyakan kriteria posisi yang **TIDAK ADA** di database (contoh: *"Berapa standar gaji Manajer Keuangan?"*).
+   - **Hasil Valid**: AI akan menjawab: *"Tidak ditemukan dokumen/konteks spesifik di database pgvector"*. Ini membuktikan AI **100% tidak berhalusinasi** dan patuh pada database.
+
+### 2. Pengujian Evaluasi Kandidat CV (Match Score 1-100)
+1. **Langkah 1**: Klik icon klip 📎 di chat bar `RagScreen`, lampirkan file PDF CV pelamar (misal `RYAN-CV.pdf`).
+2. **Langkah 2**: Tekan Kirim.
+3. **Hasil Valid**:
+   - **Terminal Backend**: Memunculkan log real-time:
+     ```text
+     [RAG DEBUG] Incoming Query: "Evaluasi kualifikasi CV pelamar..."
+     [RAG DEBUG] On-The-Fly Candidate CV Extracted (5037 chars)
+     [RAG DEBUG] Company Rules Retrieved from pgvector (2 chunks)
+     ```
+   - **Tampilan Flutter**: Menampilkan Badge Skor Match (misal `SCORE: 85/100 • Sangat Layak`), poin kelebihan kandidat, dan syarat yang belum terpenuhi.
 
 ---
 
 ## 📦 Prerequisites & System Setup
 
 ### 1. Run Ollama & Pull Local Models
-Make sure Ollama is installed and running on your system:
 ```bash
 ollama pull qwen2.5-coder:7b
 ollama pull nomic-embed-text
 ```
 
 ### 2. Run PostgreSQL with `pgvector` via Docker
-Launch the PostgreSQL vector database on port `5433`:
 ```bash
 docker run --name pgvector-container \
   -e POSTGRES_USER=admin \
@@ -76,43 +98,13 @@ cd backend
 npm install
 npm run dev
 ```
-The server will start at `http://localhost:3000`.
 
-#### Environment Configuration (`backend/.env`):
-```env
-PORT=3000
-OLLAMA_HOST=127.0.0.1
-OLLAMA_PORT=11434
-OLLAMA_MODEL=qwen2.5-coder:7b
-EMBED_MODEL=nomic-embed-text
-PG_HOST=127.0.0.1
-PG_PORT=5433
-PG_USER=admin
-PG_PASSWORD=rahasia
-PG_DATABASE=rag_db
-```
-
-### 2. Ingest Sample Document / Candidate CV (Optional Command-Line)
-```bash
-cd backend
-node ingest.js
-```
-
-### 3. Frontend Client (Flutter)
+### 2. Frontend Client (Flutter)
 ```bash
 cd frontend
 flutter pub get
 flutter run
 ```
-
----
-
-## 🛠️ Tech Stack & Dependencies
-
-- **Frontend**: Flutter, Flutter Riverpod 3.x, `http` client, Material 3.
-- **Backend Gateway**: Node.js (ES Modules), Express 5, CORS, Dotenv.
-- **RAG & Vector AI**: LangChain (`@langchain/community`, `@langchain/ollama`), PostgreSQL (`pgvector`).
-- **Local AI Models**: Ollama (`qwen2.5-coder:7b` for LLM, `nomic-embed-text` for Embeddings).
 
 ---
 
