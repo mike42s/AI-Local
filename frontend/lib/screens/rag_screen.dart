@@ -16,6 +16,10 @@ class _RagScreenState extends ConsumerState<RagScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  // Direct Attachment State
+  Uint8List? _attachedPdfBytes;
+  String? _attachedPdfName;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -35,13 +39,66 @@ class _RagScreenState extends ConsumerState<RagScreen> {
     });
   }
 
-  void _sendMessage() {
-    final text = _controller.text.trim();
-    if (text.isNotEmpty) {
-      _controller.clear();
-      ref.read(ragProvider.notifier).sendMessageStream(text);
-      _scrollToBottom();
+  Future<void> _pickPdfAttachment() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.bytes != null) {
+          setState(() {
+            _attachedPdfBytes = file.bytes;
+            _attachedPdfName = file.name;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error memilih lampiran PDF: $e')),
+        );
+      }
     }
+  }
+
+  Future<void> _sendMessage() async {
+    final userText = _controller.text.trim();
+    final hasPdf = _attachedPdfBytes != null;
+
+    if (userText.isEmpty && !hasPdf) return;
+
+    _controller.clear();
+
+    final pdfBytes = _attachedPdfBytes;
+    final pdfName = _attachedPdfName;
+
+    setState(() {
+      _attachedPdfBytes = null;
+      _attachedPdfName = null;
+    });
+
+    // Step 1: Auto-ingest attached PDF into pgvector if present
+    if (hasPdf && pdfBytes != null) {
+      final pdfTitle = pdfName ?? 'Attached_CV_${DateTime.now().millisecondsSinceEpoch}';
+      await ref.read(ragProvider.notifier).ingestPdfDocument(
+            pdfBytes: pdfBytes,
+            title: pdfTitle,
+          );
+    }
+
+    // Step 2: Formulate prompt
+    String promptToSend = userText;
+    if (promptToSend.isEmpty && hasPdf) {
+      promptToSend =
+          'Evaluasi kualifikasi CV pelamar "${pdfName ?? 'Kandidat'}" ini secara komprehensif, sebutkan kelebihan, kekurangan, dan berikan skor kecocokan Match Score 1-100.';
+    }
+
+    ref.read(ragProvider.notifier).sendMessageStream(promptToSend);
+    _scrollToBottom();
   }
 
   void _showIngestModal(BuildContext context) {
@@ -130,7 +187,7 @@ class _RagScreenState extends ConsumerState<RagScreen> {
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            'Unggah CV PDF pelamar atau masukkan kriteria posisi. AI akan mencari konteks di pgvector DB dan memberikan skor 1-100.',
+                            'Lampirkan file PDF CV langsung pada kolom chat atau tanyakan kriteria posisi. AI akan memberikan skor match 1-100 secara real-time.',
                             style: TextStyle(fontSize: 13, color: Colors.grey),
                             textAlign: TextAlign.center,
                           ),
@@ -141,8 +198,13 @@ class _RagScreenState extends ConsumerState<RagScreen> {
                             alignment: WrapAlignment.center,
                             children: [
                               ActionChip(
+                                avatar: const Icon(Icons.attach_file, size: 16),
+                                label: const Text('Lampirkan PDF CV di Chat'),
+                                onPressed: _pickPdfAttachment,
+                              ),
+                              ActionChip(
                                 avatar: const Icon(Icons.upload_file, size: 16),
-                                label: const Text('Upload CV PDF Pelamar'),
+                                label: const Text('Ingest Dokumen Base'),
                                 onPressed: () => _showIngestModal(context),
                               ),
                               ActionChip(
@@ -182,39 +244,90 @@ class _RagScreenState extends ConsumerState<RagScreen> {
               ],
             ),
             child: SafeArea(
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                      decoration: InputDecoration(
-                        hintText: 'Tanyakan evaluasi pelamar / kriteria posisi...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        filled: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  if (_attachedPdfName != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.teal.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 18),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Lampiran CV: $_attachedPdfName',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.teal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _attachedPdfBytes = null;
+                                _attachedPdfName = null;
+                              });
+                            },
+                            child: const Icon(Icons.cancel, size: 18, color: Colors.grey),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: ragState.isStreaming ? null : _sendMessage,
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: ragState.isStreaming
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.send),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.attach_file, color: Colors.teal),
+                        tooltip: 'Lampirkan File PDF CV Pelamar',
+                        onPressed: ragState.isStreaming ? null : _pickPdfAttachment,
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendMessage(),
+                          decoration: InputDecoration(
+                            hintText: _attachedPdfName != null
+                                ? 'Tuliskan instruksi analisis (opsional)...'
+                                : 'Tanyakan evaluasi pelamar / kriteria posisi...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            filled: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: ragState.isStreaming ? null : _sendMessage,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.teal,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: ragState.isStreaming
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.send),
+                      ),
+                    ],
                   ),
                 ],
               ),
