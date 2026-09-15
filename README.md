@@ -5,6 +5,8 @@
 ![Express](https://img.shields.io/badge/Backend-Node.js_Express_ESM-green)
 ![Ollama](https://img.shields.io/badge/AI_Engine-Ollama_qwen2.5--coder-orange)
 ![PostgreSQL](https://img.shields.io/badge/Vector_DB-PostgreSQL_pgvector-blue)
+---
+ 
 
 A 100% **On-Premise, Zero-Cloud-Dependency** Enterprise AI Platform built with Node.js Express, LangChain, PostgreSQL (`pgvector`), Ollama, and Flutter.
 
@@ -106,7 +108,21 @@ flutter pub get
 flutter run
 ```
 
+## Trial Result
+Data Kualifikasi
+---
+<img width="683" height="582" alt="image" src="https://github.com/user-attachments/assets/d261f509-f305-4c19-bf21-df23ad15e1c9" />
+---
+
+Log Running BackEnd dan FrontEnd
+---
+<img width="1171" height="972" alt="image" src="https://github.com/user-attachments/assets/51726b24-2561-4e0c-86d6-010aae630909" />
+---
+
+Result AI
+---
+<img width="1918" height="1039" alt="image" src="https://github.com/user-attachments/assets/21e259ff-cf2f-49cf-ad81-86e166074caf" />
 ---
 
 ## 📄 License
-Licensed under the ISC License.
+Licensed under the ISC License. 
