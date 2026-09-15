@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat_message.dart';
 import '../providers/rag_provider.dart';
+import 'batch_screening_screen.dart';
 
 class RagScreen extends ConsumerStatefulWidget {
   const RagScreen({super.key});
@@ -140,6 +141,11 @@ class _RagScreenState extends ConsumerState<RagScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.groups_outlined),
+            tooltip: 'Batch CV Screening',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BatchScreeningScreen())),
+          ),
+          IconButton(
             icon: const Icon(Icons.note_add_outlined),
             tooltip: 'Ingest CV PDF / Dokumen Baru',
             onPressed: () => _showIngestModal(context),
@@ -192,6 +198,11 @@ class _RagScreenState extends ConsumerState<RagScreen> {
                             runSpacing: 8,
                             alignment: WrapAlignment.center,
                             children: [
+                              ActionChip(
+                                avatar: const Icon(Icons.groups_outlined, size: 16),
+                                label: const Text('Batch Screening Beberapa CV'),
+                                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BatchScreeningScreen())),
+                              ),
                               ActionChip(
                                 avatar: const Icon(Icons.attach_file, size: 16),
                                 label: const Text('Lampirkan PDF CV di Chat'),

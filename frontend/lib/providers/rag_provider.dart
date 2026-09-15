@@ -5,12 +5,38 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../models/chat_message.dart';
 
+class CandidateEvaluation {
+  final String name;
+  final int? score;
+  final List<String> strengths;
+  final List<String> gaps;
+  final String recommendation;
+  final String? error;
+  const CandidateEvaluation({required this.name, required this.score, required this.strengths, required this.gaps, required this.recommendation, this.error});
+  factory CandidateEvaluation.fromJson(Map<String, dynamic> json) => CandidateEvaluation(
+    name: json['name']?.toString() ?? 'Kandidat tanpa nama',
+    score: json['score'] is num ? (json['score'] as num).toInt() : null,
+    strengths: (json['strengths'] as List? ?? []).map((item) => item.toString()).toList(),
+    gaps: (json['gaps'] as List? ?? []).map((item) => item.toString()).toList(),
+    recommendation: json['recommendation']?.toString() ?? 'Perlu ditinjau manual.',
+    error: json['error']?.toString(),
+  );
+}
+
+class CandidatePdf {
+  final String name;
+  final List<int> bytes;
+  const CandidatePdf({required this.name, required this.bytes});
+}
+
 class RagState {
   final List<ChatMessage> messages;
   final bool isStreaming;
   final bool isIngesting;
   final String? ingestMessage;
   final String? errorMessage;
+  final bool isBatchEvaluating;
+  final List<CandidateEvaluation> batchResults;
 
   RagState({
     required this.messages,
@@ -18,6 +44,8 @@ class RagState {
     this.isIngesting = false,
     this.ingestMessage,
     this.errorMessage,
+    this.isBatchEvaluating = false,
+    this.batchResults = const [],
   });
 
   RagState copyWith({
@@ -26,6 +54,8 @@ class RagState {
     bool? isIngesting,
     String? ingestMessage,
     String? errorMessage,
+    bool? isBatchEvaluating,
+    List<CandidateEvaluation>? batchResults,
   }) {
     return RagState(
       messages: messages ?? this.messages,
@@ -33,6 +63,8 @@ class RagState {
       isIngesting: isIngesting ?? this.isIngesting,
       ingestMessage: ingestMessage,
       errorMessage: errorMessage,
+      isBatchEvaluating: isBatchEvaluating ?? this.isBatchEvaluating,
+      batchResults: batchResults ?? this.batchResults,
     );
   }
 }
@@ -224,6 +256,40 @@ class RagNotifier extends Notifier<RagState> {
         isIngesting: false,
         errorMessage: 'Error koneksi ingest: $e',
       );
+      return false;
+    }
+  }
+
+  Future<bool> evaluateCandidatesBatch({
+    required String prompt,
+    required List<CandidatePdf> candidates,
+  }) async {
+    if (candidates.isEmpty || candidates.length > 10 || state.isBatchEvaluating) return false;
+    state = state.copyWith(isBatchEvaluating: true, errorMessage: null, batchResults: const []);
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/rag/evaluate-batch'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'prompt': prompt.trim(),
+          'candidates': candidates.map((candidate) => {
+            'name': candidate.name,
+            'pdfBase64': base64Encode(candidate.bytes),
+          }).toList(),
+        }),
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && data['success'] == true) {
+        final results = (data['results'] as List? ?? [])
+            .map((item) => CandidateEvaluation.fromJson(item as Map<String, dynamic>))
+            .toList();
+        state = state.copyWith(isBatchEvaluating: false, batchResults: results);
+        return true;
+      }
+      state = state.copyWith(isBatchEvaluating: false, errorMessage: data['error']?.toString() ?? 'Batch screening gagal.');
+      return false;
+    } catch (e) {
+      state = state.copyWith(isBatchEvaluating: false, errorMessage: 'Error batch screening: $e');
       return false;
     }
   }

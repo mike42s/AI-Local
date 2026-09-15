@@ -10,7 +10,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: "15mb" }));
+// Batch CV screening sends PDFs as base64 JSON. 50 MB leaves room for several
+// normal-sized CVs while still rejecting unexpectedly large requests.
+app.use(express.json({ limit: "50mb" }));
 
 app.use("/api/chat", chatRouter);
 app.use("/api/rag", ragRouter);
